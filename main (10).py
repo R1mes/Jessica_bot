@@ -13,8 +13,8 @@ TOKEN = '7016214070:AAHNjgA557iMV4XdIu4N08uxk-NVgEDLrvU'
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #привет и помощь
     user = update.effective_user
-    message = (f"Привет, {user.first_name}! Я бот-организатор мероприятий.\n"
-               "Чтобы узнать, что я умею, нажмите на кнопку 'Помощь' ниже.")
+    message = (f"Привет, {user.first_name}! Меня зовут Джессика. Я главная тусовщича этого района!\n"
+               "Готов начать вечеринку? Или присоединиться к вечеринке друзей?")
     buttons = [
         [InlineKeyboardButton("Помощь", callback_data='help')],
         [InlineKeyboardButton("Добавить мероприятие", callback_data='add_event')],
@@ -41,8 +41,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.edit_message_text(text="Используйте команды:\n"
-                                           "- Для добавления мероприятия нажмите 'Добавить мероприятие'.\n"
-                                           "- Для просмотра мероприятий нажмите 'Показать мероприятия'.",
+                                           "- Чтобы организовать вписку, нажми 'Добавить мероприятие'.\n"
+                                           "- Ищешь COOL тусовку??? нажми 'Показать мероприятия'.",
                                       reply_markup=reply_markup)
     elif query.data == 'add_event':
         await query.edit_message_text(text="Функция добавления мероприятия будет реализована позже.")
