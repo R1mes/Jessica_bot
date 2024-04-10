@@ -8,7 +8,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = '7016214070:AAHNjgA557iMV4XdIu4N08uxk-NVgEDLrvU'
+TOKEN = ''
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #привет и помощь
