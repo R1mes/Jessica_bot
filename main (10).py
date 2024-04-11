@@ -144,13 +144,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif callback_data == 'confirm_event':
         # сохранение данных в бд
         save_event_to_db(user_id, user_event_data)
-        await query.edit_message_text("*Джессика счастлива, мероприятие успешно создано*")
+        await query.edit_message_text("* мероприятие успешно создано, Джессика счастлива,*")
         event_data.pop(user_id, None)
         context.user_data.clear()
     elif callback_data == 'cancel_event':
         event_data.pop(user_id, None)
         context.user_data.clear()
-        await query.edit_message_text("*Вы потеряли доверие Джессики, мероприятие отменено*")
+        await query.edit_message_text("* мероприятие отменено, вы потеряли доверие Джессики*")
 
 
 
