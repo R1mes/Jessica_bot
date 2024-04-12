@@ -8,7 +8,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
-TOKEN = '7016214070:AAEfNHq7Mf05lzd1BraZVsOCUqb_7H6hSKU'
+TOKEN = ''
 PAGE_SIZE = 5
 
 # данные о вечеринках
@@ -79,7 +79,7 @@ async def show_events(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         navigation_buttons.append(InlineKeyboardButton("Вперёд ➡️", callback_data='next_page'))
 
     buttons.append(navigation_buttons)
-    buttons.append([InlineKeyboardButton("Назад в меню", callback_data='back_to_menu')])
+    buttons.append([InlineKeyboardButton("Назад в главное меню", callback_data='back_to_main_menu')])
 
     reply_markup = InlineKeyboardMarkup(buttons)
     if query:
@@ -87,14 +87,66 @@ async def show_events(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     else:
         await update.message.reply_text(text="Выберите мероприятие для просмотра деталей:", reply_markup=reply_markup)
 
+    # добавляем кнопки "Я В ДЕЛЕ!" и "Назад в меню" после выбора мероприятия
+    if query and query.data.startswith('event_'):
+        event_id = int(query.data.split('_')[1])
+        event = fetch_event_details(event_id)
+        if event:
+            buttons = [
+                [InlineKeyboardButton("Я В ДЕЛЕ!", callback_data=f'join_{event_id}')],
+                [InlineKeyboardButton("Назад в меню", callback_data='back_to_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+            event_details = format_event_details(event)
+            await query.edit_message_text(text=event_details, reply_markup=reply_markup)
+
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     callback_data = query.data
     user_id = query.from_user.id
-
+    user_name = query.from_user.username  # получаем username
     logger.info(f"Button data received: {callback_data}")
+    user_event_data = event_data.get(user_id, {})
+
+    if callback_data.startswith('event_'):
+        event_id = int(callback_data.split('_')[1])
+        event = fetch_event_details(event_id)
+        if event:
+            buttons = [
+                [InlineKeyboardButton("Я В ДЕЛЕ!", callback_data=f'join_{event_id}')],
+                [InlineKeyboardButton("Назад", callback_data='go_back_to_events')]  # Изменено название и callback_data
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+
+            event_details = format_event_details(event)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=event_details,
+                                           reply_markup=reply_markup)
+            await query.message.delete()
+    elif callback_data.startswith('join_'):
+        event_id = int(callback_data.split('_')[1])
+        add_user_to_event(event_id, user_name)  # добавляем пользователя к участникам
+        await query.edit_message_text(text="Вы успешно присоединились к вечеринке!")
+    elif callback_data == 'go_back_to_events':
+        await show_events(update, context)
+    elif callback_data == 'back_to_main_menu':
+        await start(update, context)
+
+    if callback_data == 'private_event':
+        user_event_data['type'] = 'private'
+        await query.edit_message_text(
+            "Введите имена пользователей (без @, после каждого нового имени ставьте запятую), "
+            "которых вы хотите пригласить на закрытую вечеринку.\n"
+            "⚠Если выбранный человек не пользовался ботом, то он не будет оповещён⚠"
+        )
+        context.user_data['state'] = 'entering_invited_users'
+    elif callback_data == 'open_event':
+        user_event_data['type'] = 'open'
+        from_open = True
+        await query.edit_message_text("Выбрано: Открытая")
+        await finalize_event_creation(update, context, user_id, from_open)
+
 
     # логика кнопок и обработка
     if callback_data == 'help':
@@ -129,9 +181,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif callback_data == 'back_to_menu':
         await start(update, context)
 
+
     # тип события/подтверждение
-    user_event_data = event_data.get(user_id, {})
-    if callback_data in ['open_event', 'private_event']:
+
+    if callback_data == 'finalizing_event':
         user_event_data['type'] = 'open' if callback_data == 'open_event' else 'private'
         buttons = [
             [InlineKeyboardButton("НАЧИНАЕМ!!!!", callback_data='confirm_event')],
@@ -163,12 +216,15 @@ def fetch_event_details(event_id):
     return event
 
 def format_event_details(event):
+    invited_users = event[8] if event[8] else "Никто еще не присоединился"
     return (f"Название: {event[2]}\n"
             f"Тематика: {event[3]}\n"
             f"Дресс-код: {event[4]}\n"
             f"Адрес: {event[5]}\n"
             f"Дата и время: {event[6]}\n"
-            f"Тип: {'Открытая' if event[7] == 'open' else 'Закрытая'}")
+            f"Тип: {'Открытая' if event[7] == 'open' else 'Закрытая'}\n"
+            f"Участники: {invited_users}")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -187,6 +243,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text("Используйте следующие команды:\n"
                                     "/start - запустить бота\n"
                                     "/help - получить справку")
+
+def add_user_to_event(event_id, user_id):
+    with sqlite3.connect('events.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT invited_users FROM events WHERE id = ?", (event_id,))
+        result = cursor.fetchone()
+        current_users = result[0] if result else ''
+        updated_users = ','.join([current_users, str(user_id)]) if current_users else str(user_id)
+        cursor.execute("UPDATE events SET invited_users = ? WHERE id = ?", (updated_users, event_id))
+        conn.commit()
 
 
 async def collect_event_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,15 +278,43 @@ async def collect_event_info(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['state'] = 'entering_date_time'
     elif state == 'entering_date_time':
         event_data[user_id]['date_time'] = text
+        context.user_data['state'] = 'choosing_type'
         buttons = [
             InlineKeyboardButton("Открытая вечеринка", callback_data='open_event'),
             InlineKeyboardButton("Закрытая вечеринка", callback_data='private_event')
         ]
         reply_markup = InlineKeyboardMarkup([buttons])
-        await update.message.reply_text("Установите тип вечеринки:", reply_markup=reply_markup)
-        context.user_data['state'] = 'choosing_type'
+        await update.message.reply_text("Время мероприятия установлено. \nУкажите тип вечеринки:",
+                                        reply_markup=reply_markup)
 
-    # ДОБАВИТЬ ЛОГИКУ ПРИГЛАШЕНИЙ НА ЗАКРЫТУЮ ВЕЧЕРИНКУ
+    elif state == 'entering_invited_users':
+        invited_users = text.split(',')
+        invited_users = [name.strip() for name in invited_users if name.strip()]
+        event_data[user_id]['invited_users'] = invited_users
+        await update.message.reply_text("Список приглашённых пользователей сохранён.")
+        from_open = False
+        await finalize_event_creation(update, context, user_id, from_open)
+
+async def finalize_event_creation(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, from_open):
+    if from_open:
+        query = update.callback_query  # варьируется от того какой у нас тип мероприятия
+    buttons = [
+        [InlineKeyboardButton("НАЧИНАЕМ!!!!", callback_data='confirm_event')],
+        [InlineKeyboardButton("Я ПЕРЕДУМАЛ(-A)!", callback_data='cancel_event')]
+    ]
+    reply_markup = InlineKeyboardMarkup(buttons)
+    if from_open:
+        await query.edit_message_text(
+            text="Всё готово! Подтвердите создание мероприятия или отмените его.",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            text="Всё готово! Подтвердите создание мероприятия или отмените его.",
+            reply_markup=reply_markup
+        )
+
+
 
 async def skip_dress_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
