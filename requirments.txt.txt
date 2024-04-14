@@ -1,2 +1,0 @@
-python-telegram-bot==13.7
-sqlite3==1.0.1
