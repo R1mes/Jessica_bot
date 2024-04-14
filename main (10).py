@@ -87,7 +87,7 @@ async def show_events(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     else:
         await update.message.reply_text(text="Выберите мероприятие для просмотра деталей:", reply_markup=reply_markup)
 
-    # добавляем кнопки "Я В ДЕЛЕ!" и "Назад в меню" после выбора мероприятия
+    # кнопки "Я В ДЕЛЕ!" и "Назад в меню" после выбора мероприятия
     if query and query.data.startswith('event_'):
         event_id = int(query.data.split('_')[1])
         event = fetch_event_details(event_id)
